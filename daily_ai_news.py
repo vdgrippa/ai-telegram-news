@@ -32,20 +32,24 @@ MODEL = "gpt-4o-mini"          # usa l’alias stabile
 def is_similar(a, b, soglia=0.85):
     return SequenceMatcher(None, a.lower(), b.lower()).ratio() >= soglia
 
-def summarize(title, snippet):
+def summarize(title: str, snippet: str) -> str:
+    """
+    Restituisce un riassunto di **40 parole** nella stessa lingua dell’articolo.
+    """
     prompt = (
-    "Riassumi in massimo 20 parole, mantenendo la lingua originale del testo:\n"
-    f"Titolo: {title}\n"
-    f"Snippet: {snippet}"
-)
+        "Riassumi in esattamente 40 parole, mantenendo la lingua originale del testo. "
+        "Termina con un punto.\n"
+        f"Titolo: {title}\n"
+        f"Snippet: {snippet}"
+    )
     resp = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=MAX_TOKENS_OUTPUT,
+        max_tokens=60,          # 40 parole ≈ 55–60 token
         temperature=TEMPERATURE,
     )
-    print(f"[GPT] token usati: {resp.usage.total_tokens}")
     return resp.choices[0].message.content.strip()
+
 
 def safe_summary(title, snippet, tries=2, wait=25):
     for i in range(tries):
@@ -73,18 +77,29 @@ def fetch_articles():
             unique.append(e)
     return unique
 
-def build_message():
-    bullets = []
+def build_message() -> str:
+    sections = []
     for entry in fetch_articles():
         title   = entry.title
-        snippet = shorten(getattr(entry, "summary", "")
-                          or getattr(entry, "description", ""),
-                          width=200, placeholder="…")
-        brief   = safe_summary(title, snippet)
-        source  = getattr(entry, "source", {}).get("title") or getattr(entry, "source_title", "")
-        bullets.append(f"• **{title}** — {brief} ([{source}]({entry.link}))")
+        source  = getattr(entry, "source", {}).get("title") \
+                  or getattr(entry, "source_title", "")
+        url     = entry.link
+        snippet = shorten(
+            getattr(entry, "summary", "") or getattr(entry, "description", ""),
+            width=300, placeholder="…",
+        )
+        brief   = safe_summary(title, snippet)        # 40 parole
+
+        # ▶︎ formato finale
+        section = (
+            f"**{title}** - {source}.\n"
+            f"{brief} ({url})"
+        )
+        sections.append(section)
+
     header = f"📰 *Rassegna AI – {datetime.date.today():%d %b %Y}*"
-    return "\n\n".join([header, "", *bullets])
+    return "\n\n".join([header, "", *sections])       # riga bianca fra articoli
+
 
 def send_telegram(text, tries=2):
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
