@@ -5,7 +5,7 @@ on:
     # ATTENZIONE – GitHub usa sempre il fuso UTC
     # 07:00 UTC = 09:00 Europe/Rome quando c’è l’ora legale
     # 08:00 UTC = 09:00 Europe/Rome in ora solare (ott-marzo)
-    - cron:  '0 7 * * *'
+    - cron:  '0 6 * * *'
   workflow_dispatch:           # pulsante “Run workflow” manuale
 
 jobs:
