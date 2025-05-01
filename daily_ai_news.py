@@ -80,25 +80,27 @@ def fetch_articles():
 def build_message() -> str:
     sections = []
     for entry in fetch_articles():
-        title   = entry.title
-        source  = getattr(entry, "source", {}).get("title") \
-                  or getattr(entry, "source_title", "")
+        title   = entry.title.strip()
+        source  = (getattr(entry, "source", {}).get("title")
+                   or getattr(entry, "source_title", "")).strip()
         url     = entry.link
+        # snippet originale per fornire contesto al riassunto
         snippet = shorten(
             getattr(entry, "summary", "") or getattr(entry, "description", ""),
             width=300, placeholder="…",
         )
-        brief   = safe_summary(title, snippet)        # 40 parole
+        brief   = safe_summary(title, snippet)  # 40 parole, stessa lingua
 
-        # ▶︎ formato finale
+        # ── formato finale ──
         section = (
-            f"**{title}** - {source}.\n"
-            f"{brief} ({url})"
+            f"• {title} - {source}.\n"
+            f"{brief} ([{source}]({url}))"
         )
         sections.append(section)
 
     header = f"📰 *Rassegna AI – {datetime.date.today():%d %b %Y}*"
-    return "\n\n".join([header, "", *sections])       # riga bianca fra articoli
+    return "\n\n".join([header, "", *sections])     # riga bianca fra articoli
+
 
 
 def send_telegram(text, tries=2):
