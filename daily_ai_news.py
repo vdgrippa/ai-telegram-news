@@ -25,7 +25,7 @@ FEED_URLS = [
     "https://news.google.com/rss/search?q=intelligenza+artificiale&hl=it&gl=IT&ceid=IT:it",
     "https://news.google.com/rss/search?q=artificial+intelligence&hl=en&gl=US&ceid=US:en",
 ]
-MAX_ARTICLES, MAX_TOKENS_OUTPUT, TEMPERATURE = 8, 40, 0.3
+MAX_ARTICLES, MAX_TOKENS_OUTPUT, TEMPERATURE = 5, 40, 0.3
 MODEL = "gpt-4o-mini"          # usa l’alias stabile
 
 # ------------------------- helper ------------------------------------------ #
