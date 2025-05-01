@@ -1,51 +1,62 @@
-
 #!/usr/bin/env python3
 """
-daily_ai_news.py  –  raccoglie le novità sull’AI e le pubblica su Telegram.
+daily_ai_news.py – raccoglie le novità sull’AI e le pubblica su Telegram.
 Da schedulare ogni giorno alle 09:00 Europe/Rome via GitHub Actions.
 """
 
 import os
 import datetime
+from textwrap import shorten
+
 import feedparser
 import requests
-from textwrap import shorten
-import openai
-
-# Carica eventuale .env per i test locali (non fa nulla se il file manca)
 from dotenv import load_dotenv
-load_dotenv()
+from openai import OpenAI
 
-# --- credenziali ----------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# 1. CREDENZIALI (prese da variabili d’ambiente o da .env in locale)
+# --------------------------------------------------------------------------- #
+load_dotenv()  # se il file .env non c’è, non solleva errori
+
 TG_TOKEN       = os.getenv("TG_TOKEN")          # token BotFather
-TG_CHAT_ID     = os.getenv("TG_CHAT_ID")        # id canale (es. -1001234567890)
+TG_CHAT_ID     = os.getenv("TG_CHAT_ID")        # id canale (–100…)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")    # chiave OpenAI
 
 if not all((TG_TOKEN, TG_CHAT_ID, OPENAI_API_KEY)):
-    raise RuntimeError("Variabili d’ambiente mancanti: TG_TOKEN, TG_CHAT_ID, OPENAI_API_KEY")
+    raise RuntimeError(
+        "Variabili d’ambiente mancanti: TG_TOKEN, TG_CHAT_ID, OPENAI_API_KEY"
+    )
 
-openai.api_key = OPENAI_API_KEY
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-# --- parametri ------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# 2. PARAMETRI CONFIGURABILI
+# --------------------------------------------------------------------------- #
 FEED_URLS = [
     # Italiano
     "https://news.google.com/rss/search?q=intelligenza+artificiale&hl=it&gl=IT&ceid=IT:it",
     # Inglese
     "https://news.google.com/rss/search?q=artificial+intelligence&hl=en&gl=US&ceid=US:en",
 ]
-MAX_ARTICLES       = 8      # quante notizie spedire
-MAX_TOKENS_OUTPUT  = 40     # lunghezza sintesi GPT
-TEMPERATURE        = 0.5    # “creatività” del modello
+MAX_ARTICLES      = 8     # quante notizie includere
+MAX_TOKENS_OUTPUT = 40    # lunghezza sintesi GPT
+TEMPERATURE       = 0.5   # “creatività” del modello
 
-# --- funzioni -------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# 3. FUNZIONI
+# --------------------------------------------------------------------------- #
 def fetch_articles():
-    """Scarica gli RSS, li unisce, ordina per data e rimuove i duplicati."""
+    """Scarica gli RSS, ordina per data e rimuove i duplicati."""
     entries = []
     for url in FEED_URLS:
         entries.extend(feedparser.parse(url).entries)
 
-    # ordina per data pubblicazione
-    entries.sort(key=lambda e: getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None), reverse=True)
+    # ordina per data pubblicazione (più recente in cima)
+    entries.sort(
+        key=lambda e: getattr(e, "published_parsed", None)
+        or getattr(e, "updated_parsed", None),
+        reverse=True,
+    )
 
     # deduplica per link
     seen, unique = set(), []
@@ -63,7 +74,7 @@ def summarize(title: str, snippet: str) -> str:
         f"Titolo: {title}\n"
         f"Snippet: {snippet}"
     )
-    resp = openai.ChatCompletion.create(
+    resp = client.chat.completions.create(
         model="gpt-3.5-turbo-0125",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=MAX_TOKENS_OUTPUT,
@@ -76,7 +87,11 @@ def build_message() -> str:
     bullets = []
     for entry in fetch_articles():
         title   = entry.title
-        snippet = shorten(getattr(entry, "summary", "") or getattr(entry, "description", ""), width=200, placeholder="…")
+        snippet = shorten(
+            getattr(entry, "summary", "") or getattr(entry, "description", ""),
+            width=200,
+            placeholder="…",
+        )
         brief   = summarize(title, snippet)
         source  = getattr(entry, "source", {}).get("title") or getattr(entry, "source_title", "")
         url     = entry.link
@@ -99,6 +114,9 @@ def send_telegram(text: str):
     resp.raise_for_status()
 
 
+# --------------------------------------------------------------------------- #
+# 4. MAIN
+# --------------------------------------------------------------------------- #
 def main():
     message = build_message()
     send_telegram(message)
