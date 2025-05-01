@@ -1,126 +1,103 @@
 #!/usr/bin/env python3
 """
-daily_ai_news.py – raccoglie le novità sull’AI e le pubblica su Telegram.
-Da schedulare ogni giorno alle 09:00 Europe/Rome via GitHub Actions.
+daily_ai_news.py – versione con retry, deduplica avanzata e logging.
 """
 
-import os
-import datetime
+import os, time, datetime
 from textwrap import shorten
+from difflib import SequenceMatcher
 
-import feedparser
-import requests
+import feedparser, requests
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
-# --------------------------------------------------------------------------- #
-# 1. CREDENZIALI (prese da variabili d’ambiente o da .env in locale)
-# --------------------------------------------------------------------------- #
-load_dotenv()  # se il file .env non c’è, non solleva errori
-
-TG_TOKEN       = os.getenv("TG_TOKEN")          # token BotFather
-TG_CHAT_ID     = os.getenv("TG_CHAT_ID")        # id canale (–100…)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")    # chiave OpenAI
-
+# ------------------------- credenziali ------------------------------------- #
+load_dotenv()
+TG_TOKEN       = os.getenv("TG_TOKEN")
+TG_CHAT_ID     = os.getenv("TG_CHAT_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not all((TG_TOKEN, TG_CHAT_ID, OPENAI_API_KEY)):
-    raise RuntimeError(
-        "Variabili d’ambiente mancanti: TG_TOKEN, TG_CHAT_ID, OPENAI_API_KEY"
-    )
-
+    raise RuntimeError("Variabili d’ambiente mancanti")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# --------------------------------------------------------------------------- #
-# 2. PARAMETRI CONFIGURABILI
-# --------------------------------------------------------------------------- #
+# ------------------------- parametri --------------------------------------- #
 FEED_URLS = [
-    # Italiano
     "https://news.google.com/rss/search?q=intelligenza+artificiale&hl=it&gl=IT&ceid=IT:it",
-    # Inglese
     "https://news.google.com/rss/search?q=artificial+intelligence&hl=en&gl=US&ceid=US:en",
 ]
-MAX_ARTICLES      = 8     # quante notizie includere
-MAX_TOKENS_OUTPUT = 40    # lunghezza sintesi GPT
-TEMPERATURE       = 0.5   # “creatività” del modello
+MAX_ARTICLES, MAX_TOKENS_OUTPUT, TEMPERATURE = 8, 40, 0.3
+MODEL = "gpt-4o-mini"          # usa l’alias stabile
 
-# --------------------------------------------------------------------------- #
-# 3. FUNZIONI
-# --------------------------------------------------------------------------- #
-def fetch_articles():
-    """Scarica gli RSS, ordina per data e rimuove i duplicati."""
-    entries = []
-    for url in FEED_URLS:
-        entries.extend(feedparser.parse(url).entries)
+# ------------------------- helper ------------------------------------------ #
+def is_similar(a, b, soglia=0.85):
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio() >= soglia
 
-    # ordina per data pubblicazione (più recente in cima)
-    entries.sort(
-        key=lambda e: getattr(e, "published_parsed", None)
-        or getattr(e, "updated_parsed", None),
-        reverse=True,
-    )
-
-    # deduplica per link
-    seen, unique = set(), []
-    for e in entries:
-        if e.link not in seen and len(unique) < MAX_ARTICLES:
-            seen.add(e.link)
-            unique.append(e)
-    return unique
-
-
-def summarize(title: str, snippet: str) -> str:
-    """Sintetizza titolo+snippet in max 20 parole usando gpt-4.1-mini-2025-04-14."""
-    prompt = (
-        "Riassumi in italiano in massimo 20 parole:\n"
-        f"Titolo: {title}\n"
-        f"Snippet: {snippet}"
-    )
+def summarize(title, snippet):
+    prompt = f"Riassumi in italiano in massimo 20 parole:\nTitolo: {title}\nSnippet: {snippet}"
     resp = client.chat.completions.create(
-        model="gpt-4.1-mini-2025-04-14",
+        model=MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=MAX_TOKENS_OUTPUT,
         temperature=TEMPERATURE,
     )
+    print(f"[GPT] token usati: {resp.usage.total_tokens}")
     return resp.choices[0].message.content.strip()
 
+def safe_summary(title, snippet, tries=2, wait=25):
+    for i in range(tries):
+        try:
+            return summarize(title, snippet)
+        except OpenAIError as err:
+            print(f"[GPT] retry {i+1}/{tries}: {err}")
+            time.sleep(wait)
+    return "Sintesi non disponibile."
 
-def build_message() -> str:
+def fetch_articles():
+    entries = [e for url in FEED_URLS for e in feedparser.parse(url).entries]
+    entries.sort(key=lambda e: getattr(e, "published_parsed", None)
+                              or getattr(e, "updated_parsed", None),
+                 reverse=True)
+    seen_links, seen_titles, unique = set(), [], []
+    for e in entries:
+        if e.link in seen_links:                          # dup link
+            continue
+        if any(is_similar(e.title, t) for t in seen_titles):  # dup titolo
+            continue
+        seen_links.add(e.link)
+        seen_titles.append(e.title)
+        if len(unique) < MAX_ARTICLES:
+            unique.append(e)
+    return unique
+
+def build_message():
     bullets = []
     for entry in fetch_articles():
         title   = entry.title
-        snippet = shorten(
-            getattr(entry, "summary", "") or getattr(entry, "description", ""),
-            width=200,
-            placeholder="…",
-        )
-        brief   = summarize(title, snippet)
+        snippet = shorten(getattr(entry, "summary", "")
+                          or getattr(entry, "description", ""),
+                          width=200, placeholder="…")
+        brief   = safe_summary(title, snippet)
         source  = getattr(entry, "source", {}).get("title") or getattr(entry, "source_title", "")
-        url     = entry.link
-        bullets.append(f"• **{title}** — {brief} ([{source}]({url}))")
-
-    today  = datetime.date.today().strftime("%d %b %Y")
-    header = f"📰 *Rassegna AI – {today}*"
+        bullets.append(f"• **{title}** — {brief} ([{source}]({entry.link}))")
+    header = f"📰 *Rassegna AI – {datetime.date.today():%d %b %Y}*"
     return "\n".join([header, "", *bullets])
 
+def send_telegram(text, tries=2):
+    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+    payload = {"chat_id": TG_CHAT_ID, "text": text,
+               "parse_mode": "Markdown", "disable_web_page_preview": False}
+    for i in range(tries):
+        r = requests.post(url, json=payload, timeout=20)
+        if r.ok and r.json().get("ok"):
+            return
+        print(f"[TG] errore {r.status_code}: {r.text}")
+        if "parse" in r.text and payload["parse_mode"] == "Markdown":
+            payload["parse_mode"] = "HTML"
+        time.sleep(10)
+    raise RuntimeError("Invio Telegram fallito")
 
-def send_telegram(text: str):
-    api_url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TG_CHAT_ID,
-        "text": text,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": False,
-    }
-    resp = requests.post(api_url, json=payload, timeout=20)
-    resp.raise_for_status()
-
-
-# --------------------------------------------------------------------------- #
-# 4. MAIN
-# --------------------------------------------------------------------------- #
 def main():
-    message = build_message()
-    send_telegram(message)
-
+    send_telegram(build_message())
 
 if __name__ == "__main__":
     main()
