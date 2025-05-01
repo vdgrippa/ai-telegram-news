@@ -68,14 +68,14 @@ def fetch_articles():
 
 
 def summarize(title: str, snippet: str) -> str:
-    """Sintetizza titolo+snippet in max 20 parole usando GPT-3.5-Turbo."""
+    """Sintetizza titolo+snippet in max 20 parole usando gpt-4.1-mini-2025-04-14."""
     prompt = (
         "Riassumi in italiano in massimo 20 parole:\n"
         f"Titolo: {title}\n"
         f"Snippet: {snippet}"
     )
     resp = client.chat.completions.create(
-        model="gpt-3.5-turbo-0125",
+        model="gpt-4.1-mini-2025-04-14",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=MAX_TOKENS_OUTPUT,
         temperature=TEMPERATURE,
