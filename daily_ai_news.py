@@ -22,9 +22,12 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ------------------------- parametri --------------------------------------- #
 FEED_URLS = [
+    # Google News – AI in italiano
     "https://news.google.com/rss/search?q=intelligenza+artificiale&hl=it&gl=IT&ceid=IT:it",
-    "https://news.google.com/rss/search?q=artificial+intelligence&hl=en&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=ai+generativa&hl=it&gl=IT&ceid=IT:it",
+    "https://news.google.com/rss/search?q=modelli+linguistici&hl=it&gl=IT&ceid=IT:it",
 ]
+
 MAX_ARTICLES, MAX_TOKENS_OUTPUT, TEMPERATURE = 5, 40, 0.3
 MODEL = "gpt-4o-mini"          # usa l’alias stabile
 
@@ -60,21 +63,49 @@ def safe_summary(title, snippet, tries=2, wait=25):
             time.sleep(wait)
     return "Sintesi non disponibile."
 
+from langdetect import detect, LangDetectException   # ⬅︎ import in testa al file
+
+def is_italian(text: str) -> bool:
+    """
+    Ritorna True se la lingua rilevata è italiano ('it'), altrimenti False.
+    langdetect lavora su poche parole, ma usiamo il titolo che è sempre presente.
+    """
+    try:
+        return detect(text) == "it"
+    except LangDetectException:
+        # in caso di stringa troppo corta o errore di detection scartiamo l'articolo
+        return False
+
+
 def fetch_articles():
+    """Scarica gli RSS, filtra per lingua italiana, rimuove duplicati e ordina per data."""
+    # 1) unisci gli entry provenienti dai feed
     entries = [e for url in FEED_URLS for e in feedparser.parse(url).entries]
-    entries.sort(key=lambda e: getattr(e, "published_parsed", None)
-                              or getattr(e, "updated_parsed", None),
-                 reverse=True)
+
+    # 2) ordina per data pubblicazione (più recente in cima)
+    entries.sort(
+        key=lambda e: getattr(e, "published_parsed", None)
+               or getattr(e, "updated_parsed", None),
+        reverse=True,
+    )
+
+    # 3) deduplica e filtra SOLO italiano
     seen_links, seen_titles, unique = set(), [], []
     for e in entries:
-        if e.link in seen_links:                          # dup link
+        if e.link in seen_links:            # link già visto
             continue
-        if any(is_similar(e.title, t) for t in seen_titles):  # dup titolo
+        if not is_italian(e.title):         # scarta se il titolo non è in IT
             continue
+        if any(is_similar(e.title, t) for t in seen_titles):  # titolo quasi duplicato
+            continue
+
         seen_links.add(e.link)
         seen_titles.append(e.title)
-        if len(unique) < MAX_ARTICLES:
-            unique.append(e)
+        unique.append(e)
+
+        if len(unique) >= MAX_ARTICLES:     # stop appena raggiunto il limite
+            break
+
     return unique
 
 def build_message() -> str:
