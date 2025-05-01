@@ -33,7 +33,11 @@ def is_similar(a, b, soglia=0.85):
     return SequenceMatcher(None, a.lower(), b.lower()).ratio() >= soglia
 
 def summarize(title, snippet):
-    prompt = f"Riassumi in italiano in massimo 20 parole:\nTitolo: {title}\nSnippet: {snippet}"
+    prompt = (
+    "Riassumi in massimo 20 parole, mantenendo la lingua originale del testo:\n"
+    f"Titolo: {title}\n"
+    f"Snippet: {snippet}"
+)
     resp = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
@@ -80,7 +84,7 @@ def build_message():
         source  = getattr(entry, "source", {}).get("title") or getattr(entry, "source_title", "")
         bullets.append(f"• **{title}** — {brief} ([{source}]({entry.link}))")
     header = f"📰 *Rassegna AI – {datetime.date.today():%d %b %Y}*"
-    return "\n".join([header, "", *bullets])
+    return "\n\n".join([header, "", *bullets])
 
 def send_telegram(text, tries=2):
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
