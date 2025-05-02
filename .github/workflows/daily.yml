@@ -43,6 +43,7 @@ jobs:
         WP_URL_BASE:  ${{ secrets.WP_URL_BASE }}
         WP_USER:      ${{ secrets.WP_USER }}
         WP_APP_PASS:  ${{ secrets.WP_APP_PASS }}
-        WP_CAT_ID:    "26"                             # ⇦ sostituisci con ID reale
+        WP_CAT_ID:    "123"                             # ⇦ sostituisci con ID reale
         EXTRACTS_JSON: ${{ steps.digest.outputs.EXTRACTS }}
 
+  
