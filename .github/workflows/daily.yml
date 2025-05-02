@@ -38,6 +38,8 @@ jobs:
         echo "EXTRACTS_JSON=$(cat digest.json | tr -d '\n')" >> "$GITHUB_ENV"
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        TG_CHAT_ID:     ${{ secrets.TG_CHAT_ID }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}        
 
     # 6) pubblica i 5 estratti su WordPress
     - name: Publish extracts to WordPress
