@@ -22,19 +22,24 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    # 4) genera digest (+ invia a Telegram)
-    - name: Generate digest & send to Telegram
-      id: digest
+    # 4) invia il messaggio su Telegram (niente JSON)
+    - name: Send digest to Telegram
       run: |
-        python daily_ai_news.py > digest.json
-        # salva JSON compatto in variabile d'ambiente per gli step successivi
-        echo "EXTRACTS_JSON=$(jq -c . < digest.json)" >> "$GITHUB_ENV"
+        python daily_ai_news.py           # fa solo Telegram
       env:
         TG_TOKEN:       ${{ secrets.TG_TOKEN }}
         TG_CHAT_ID:     ${{ secrets.TG_CHAT_ID }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-    # 5) pubblica i 5 estratti su WordPress
+    # 5) crea il JSON per WordPress
+    - name: Generate digest JSON
+      run: |
+        python generate_digest.py > digest.json
+        echo "EXTRACTS_JSON=$(cat digest.json | tr -d '\n')" >> "$GITHUB_ENV"
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    # 6) pubblica i 5 estratti su WordPress
     - name: Publish extracts to WordPress
       run: |
         pip install requests
@@ -43,8 +48,9 @@ jobs:
         WP_URL_BASE:   ${{ secrets.WP_URL_BASE }}
         WP_USER:       ${{ secrets.WP_USER }}
         WP_APP_PASS:   ${{ secrets.WP_APP_PASS }}
-        WP_CAT_ID:     "26"                     # ← ID categoria Bacheca-AI
+        WP_CAT_ID:     "26"                       # ← ID categoria
         EXTRACTS_JSON: ${{ env.EXTRACTS_JSON }}
+
 
 
   
