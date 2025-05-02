@@ -1,10 +1,10 @@
-name: Daily AI News           # compare nel tab “Actions”
+name: Daily AI News            # compare nel tab “Actions”
 
 on:
   schedule:
     # 06:00 UTC = 08:00 Europe/Rome (ora legale)
     - cron:  '0 6 * * *'
-  workflow_dispatch:          # avvio manuale
+  workflow_dispatch:           # avvio manuale
 
 jobs:
   run:
@@ -22,13 +22,13 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    # 4) genera digest (+ posta su Telegram come già fa lo script)
+    # 4) genera digest (+ invia a Telegram)
     - name: Generate digest & send to Telegram
       id: digest
       run: |
         python daily_ai_news.py > digest.json
-        # esporta il JSON come output per lo step successivo
-        echo "EXTRACTS=$(cat digest.json | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+        # salva JSON compatto in variabile d'ambiente per gli step successivi
+        echo "EXTRACTS_JSON=$(jq -c . < digest.json)" >> "$GITHUB_ENV"
       env:
         TG_TOKEN:       ${{ secrets.TG_TOKEN }}
         TG_CHAT_ID:     ${{ secrets.TG_CHAT_ID }}
@@ -37,13 +37,14 @@ jobs:
     # 5) pubblica i 5 estratti su WordPress
     - name: Publish extracts to WordPress
       run: |
-        pip install requests      # solo questa dipendenza in più
+        pip install requests
         python wp_publish.py
       env:
-        WP_URL_BASE:  ${{ secrets.WP_URL_BASE }}
-        WP_USER:      ${{ secrets.WP_USER }}
-        WP_APP_PASS:  ${{ secrets.WP_APP_PASS }}
-        WP_CAT_ID:    "26"                             # ⇦ sostituisci con ID reale
-        EXTRACTS_JSON: ${{ steps.digest.outputs.EXTRACTS }}
+        WP_URL_BASE:   ${{ secrets.WP_URL_BASE }}
+        WP_USER:       ${{ secrets.WP_USER }}
+        WP_APP_PASS:   ${{ secrets.WP_APP_PASS }}
+        WP_CAT_ID:     "26"                     # ← ID categoria Bacheca-AI
+        EXTRACTS_JSON: ${{ env.EXTRACTS_JSON }}
+
 
   
