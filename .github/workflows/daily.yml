@@ -1,29 +1,48 @@
-name: Daily AI News            # nome visualizzato nel tab Actions
+name: Daily AI News           # compare nel tab “Actions”
 
 on:
   schedule:
-    # ATTENZIONE – GitHub usa sempre il fuso UTC
-    # 07:00 UTC = 09:00 Europe/Rome quando c’è l’ora legale
-    # 08:00 UTC = 09:00 Europe/Rome in ora solare (ott-marzo)
-    - cron:  '0 7 * * *'
-  workflow_dispatch:           # pulsante “Run workflow” manuale
+    # 06:00 UTC = 08:00 Europe/Rome (ora legale)
+    - cron:  '0 6 * * *'
+  workflow_dispatch:          # avvio manuale
 
 jobs:
   run:
-    runs-on: ubuntu-latest     # runner Linux offerto da GitHub
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4    # scarica il tuo repo
+    # 1) checkout repo
+    - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'     # la stessa versione che usi in locale
+    # 2) Python 3.11 (stabile per openai + httpx pin)
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+    # 3) install requirements
+    - name: Install dependencies
+      run: pip install -r requirements.txt
 
-      - name: Run script
-        run: python daily_ai_news.py
-        env:
-          TG_TOKEN:       ${{ secrets.TG_TOKEN }}
-          TG_CHAT_ID:     ${{ secrets.TG_CHAT_ID }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    # 4) genera digest (+ posta su Telegram come già fa lo script)
+    - name: Generate digest & send to Telegram
+      id: digest
+      run: |
+        python daily_ai_news.py > digest.json
+        # esporta il JSON come output per lo step successivo
+        echo "EXTRACTS=$(cat digest.json | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+      env:
+        TG_TOKEN:       ${{ secrets.TG_TOKEN }}
+        TG_CHAT_ID:     ${{ secrets.TG_CHAT_ID }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    # 5) pubblica i 5 estratti su WordPress
+    - name: Publish extracts to WordPress
+      run: |
+        pip install requests      # solo questa dipendenza in più
+        python wp_publish.py
+      env:
+        WP_URL_BASE:  ${{ secrets.WP_URL_BASE }}
+        WP_USER:      ${{ secrets.WP_USER }}
+        WP_APP_PASS:  ${{ secrets.WP_APP_PASS }}
+        WP_CAT_ID:    "26"                             # ⇦ sostituisci con ID reale
+        EXTRACTS_JSON: ${{ steps.digest.outputs.EXTRACTS }}
+
