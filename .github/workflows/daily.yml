@@ -16,7 +16,7 @@ jobs:
     # 2) Python 3.11 (stabile per openai + httpx pin)
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.13'
 
     # 3) install requirements
     - name: Install dependencies
@@ -43,7 +43,7 @@ jobs:
         WP_URL_BASE:  ${{ secrets.WP_URL_BASE }}
         WP_USER:      ${{ secrets.WP_USER }}
         WP_APP_PASS:  ${{ secrets.WP_APP_PASS }}
-        WP_CAT_ID:    "123"                             # ⇦ sostituisci con ID reale
+        WP_CAT_ID:    "26"                             # ⇦ sostituisci con ID reale
         EXTRACTS_JSON: ${{ steps.digest.outputs.EXTRACTS }}
 
   
