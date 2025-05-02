@@ -42,4 +42,9 @@ extracts = json.loads(os.getenv("EXTRACTS_JSON", "[]"))  # passato dal job
 for ext in extracts[:5]:          # garantisce max 5
     title  = f"{ext['title']} – {ext['source']}"
     body   = f"{ext['summary']} ([{ext['source']}]({ext['link']}))"
-    create_post(title, body)
+    create_post(title, body = (
+        f"{ext['summary']} "
+        f"(<a href=\"{ext['link']}\" target=\"_blank\" rel=\"noopener\">"
+        f"{ext['source']}</a>)"
+        )
+    )   
